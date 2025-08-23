@@ -1,0 +1,1 @@
+# mail_in_spbstu_bot
