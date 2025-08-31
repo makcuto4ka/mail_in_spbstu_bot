@@ -5,6 +5,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from config.config import Config, load_config
 from handlers.registration_handlers import unregistered_users_router
+from handlers.registered_users import registered_users_router
 from keyboards.menu_commands import set_main_menu
 from database.database import init_db
 
@@ -32,8 +33,8 @@ async def main():
     
     await set_main_menu(bot)
 
+    dp.include_router(registered_users_router)
     dp.include_router(unregistered_users_router)
-
 
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)

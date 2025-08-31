@@ -5,4 +5,4 @@ class KnownUser(BaseFilter):
     async def __call__(self, massage: Message, db: dict) -> bool:
         print(massage.from_user.id)
         print(db)
-        return massage.from_user.id not in db['users']
+        return massage.from_user.id in db['users']
