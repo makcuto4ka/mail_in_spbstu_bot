@@ -40,11 +40,28 @@ async def process_login_sent(message: Message, state: FSMContext):
     await state.set_state(FSMFillRegistration.fill_password)
     
 @unregistered_users_router.message(StateFilter(FSMFillRegistration.fill_password), F.text)
-async def process_login_sent(message: Message, state: FSMContext, db: dict):
-    await state.update_data(password=message.text)
+async def process_password_sent(message: Message, state: FSMContext, db: dict):
+    # Получаем данные пользователя для проверки учетных данных
+    user_data = await state.get_data()
+    login = user_data.get('login')
+    password = message.text
+
+    # Здесь должна быть проверка учетных данных через EWS
+    # Пока что временно пропускаем проверку, но в реальном приложении нужно реализовать
+    from services.mail_service import send_mail_async
+    # Пример тестового соединения - отправка тестового письма на самого себя
+    # Это временный способ проверки учетных данных, в реальности нужна отдельная функция проверки
+    # credentials_test = await send_mail_async(login, password, [login], "Тест", "Тестовое сообщение для проверки учетных данных")
+    # if not credentials_test:
+    #     await message.answer(text=LEXICON['wrong_credentials'])
+    #     return
+
+    await state.update_data(password=password)
     await message.delete()
     await message.answer(text=LEXICON['end_registration'])
-    db["users"][message.from_user.id] = await state.get_data()
+    
+    # Сохраняем пользователя в постоянное хранилище
+    db["add_user"](message.from_user.id, login, password)
     print(db)
     # здесь запускается функция которая мониторит новые сообшения
     await state.clear()
@@ -61,6 +78,7 @@ async def send_echo_not_registration(message: Message):
         reply_markup=create_registration_keyboard('registration',),
     )
     
-@unregistered_users_router.my_chat_member(ChatMemberUpdatedFilter(member_status_changed=KICKED))
+@unregistered_users_router.my_chat_member(ChatMemberUpdatedFilter(member_status_changed=KICKED), KnownUser())
 async def process_user_blocked_bot(event: ChatMemberUpdated, db: dict):
-    db["users"].pop(event.from_user.id)
+    # Удаляем из постоянной базы данных, установив active в False
+    db["update_user"](event.from_user.id, active=False)

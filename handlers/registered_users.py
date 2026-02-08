@@ -7,6 +7,7 @@ from states.states import FSMFillEmail
 from keyboards.keyboards import create_inline_kb
 from lexicon.lexicon import LEXICON
 from filters.filters import KnownUser
+from services.mail_service import send_mail_async
 
 
 registered_users_router = Router()
@@ -110,13 +111,63 @@ async def process_upload_attachment_sent(message: Message, state: FSMContext):
 
     
 @registered_users_router.callback_query(F.data == 'but_send', StateFilter(FSMFillEmail.fill_form))
-async def process_upload_attachment_press(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text(text=LEXICON['but_send'])
+async def process_send_email_press(callback: CallbackQuery, state: FSMContext, db: dict):
+    # Получаем пользователя из постоянной базы данных
+    user_data = db['get_user'](callback.from_user.id)
+    if not user_data:
+        await callback.message.edit_text(text="Вы не зарегистрированы в системе.")
+        await state.clear()
+        return
+
     if (await state.get_data()).get("addressees") != '':
-        # здесь должна быть функция для отправки письма по почте 
+        ok = await send_mail_async(
+            email=user_data['login'],
+            password=user_data['password'],
+            to=(await state.get_data()).get("addressees"),
+            subject=(await state.get_data()).get("topic"),
+            body=(await state.get_data()).get("text_massage")
+        )
+        await callback.message.edit_text(
+            text=LEXICON["sent" if ok else "error_send"]+'\n\n'+
+            LEXICON['fill_send'].format(**(await state.get_data()))+'\n\n'+
+            LEXICON["sent" if ok else "error_send"]
+        )
         await state.clear()
     
 @registered_users_router.callback_query(F.data == 'but_cancel', StateFilter(FSMFillEmail.fill_form))
-async def process_upload_attachment_press(callback: CallbackQuery, state: FSMContext):
+async def process_cancel_command(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(text=LEXICON['but_cancel'])
     await state.clear()
+
+
+# Обработчик для команды проверки почты
+@registered_users_router.message(Command(commands="check_mail"), StateFilter(default_state))
+async def process_check_mail_command(message: Message, db: dict):
+    from services.mail_service import fetch_unread_emails_async
+    from datetime import datetime
+    
+    # Получаем пользователя из постоянной базы данных
+    user_data = db['get_user'](message.from_user.id)
+    if not user_data:
+        await message.answer(text="Вы не зарегистрированы в системе.")
+        return
+    
+    # Получаем непрочитанные письма
+    emails = await fetch_unread_emails_async(
+        email=user_data['login'],
+        password=user_data['password'],
+        server="mail.spbstu.ru",  # В реальном приложении нужно использовать значение из конфига
+        verify_ssl=True
+    )
+    
+    if emails:
+        response_text = f"Найдено {len(emails)} непрочитанных писем:\n\n"
+        for email in emails[:5]:  # Показываем только первые 5 писем
+            subject = email.get('subject', 'Без темы')
+            sender = email.get('from', 'Неизвестно')
+            date = email.get('datetime_received', 'Неизвестно')
+            response_text += f"📧 Тема: {subject}\nОт: {sender}\nДата: {date}\n\n"
+    else:
+        response_text = "Нет новых писем."
+    
+    await message.answer(text=response_text)

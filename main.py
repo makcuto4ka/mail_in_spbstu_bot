@@ -8,6 +8,7 @@ from handlers.registration_handlers import unregistered_users_router
 from handlers.registered_users import registered_users_router
 from keyboards.menu_commands import set_main_menu
 from database.database import init_db
+from app.tasks.poller import Poller
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,16 @@ async def main():
     dp.include_router(registered_users_router)
     dp.include_router(unregistered_users_router)
 
+    # Создаем и запускаем poller
+    poller = Poller(db, config, bot)
+    poller_task = asyncio.create_task(poller.poll_loop())
+
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        poller.stop()
+        await poller_task  # Ждем завершения задачи poller
 
 
 if __name__ == "__main__":
